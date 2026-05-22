@@ -2,7 +2,7 @@ import type { CrmUser } from "../_components/auth-provider";
 import type { Lead } from "./crm-data";
 
 export function canViewAllLeads(user: CrmUser | null) {
-  return user?.role === "admin";
+  return Boolean(user);
 }
 
 export function canViewLead(user: CrmUser | null, lead: Lead) {
@@ -22,9 +22,7 @@ export function canViewLead(user: CrmUser | null, lead: Lead) {
 }
 
 export function getVisibleLeads(user: CrmUser | null, leads: Lead[]) {
-  const activeLeads = user?.role === "admin"
-    ? leads.filter((lead) => !lead.isArchived)
-    : leads.filter((lead) => !lead.isArchived);
+  const activeLeads = leads.filter((lead) => !lead.isArchived);
 
   return canViewAllLeads(user)
     ? activeLeads

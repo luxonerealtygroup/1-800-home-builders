@@ -39,9 +39,9 @@ export function UserAdminPanel() {
     );
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const result = addUser({ name, email, role, password });
+    const result = await addUser({ name, email, role, password });
     setMessage(result.message);
 
     if (result.ok) {

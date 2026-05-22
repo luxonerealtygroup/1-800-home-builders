@@ -9,9 +9,13 @@ import {
   useState,
 } from "react";
 import { authService } from "@/lib/services/auth";
-import { getSupabaseEnv } from "@/lib/supabase/client";
+import {
+  clearStoredSupabaseSession,
+  getSupabaseEnv,
+} from "@/lib/supabase/client";
 
 export type UserRole = "admin" | "sales_rep";
+export type AuthMode = "local" | "supabase";
 
 export type CrmUser = {
   id: string;
@@ -34,7 +38,8 @@ type StoredCrmUser = Omit<CrmUser, "role"> & {
 };
 
 type AuthContextValue = {
-  addUser: (input: NewUserInput) => { ok: boolean; message: string };
+  addUser: (input: NewUserInput) => Promise<{ ok: boolean; message: string }>;
+  authMode: AuthMode;
   canManageUsers: boolean;
   deleteUser: (userId: string) => { ok: boolean; message: string };
   loading: boolean;
@@ -161,9 +166,21 @@ function upsertDefaultUsers(storedUsers: CrmUser[]): CrmUser[] {
   return seededUsers;
 }
 
+function findLocalUser(email: string) {
+  const latestUsers = upsertDefaultUsers(readStoredUsers());
+  const matchingUser = latestUsers.find(
+    (candidate) => candidate.email.toLowerCase() === email,
+  );
+
+  window.localStorage.setItem(USERS_KEY, JSON.stringify(latestUsers));
+
+  return { latestUsers, matchingUser };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [users, setUsers] = useState<CrmUser[]>(defaultUsers);
   const [user, setUser] = useState<CrmUser | null>(null);
+  const [authMode, setAuthMode] = useState<AuthMode>("local");
   const [loading, setLoading] = useState(true);
   const hasSupabaseConfig = getSupabaseEnv().isConfigured;
 
@@ -181,7 +198,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const supabaseUser = await authService.getCurrentCrmUser();
 
             if (supabaseUser) {
+              const supabaseUsers = await authService.listCrmUsers();
+
               setUser(supabaseUser);
+              setUsers(supabaseUsers);
+              setAuthMode("supabase");
               setLoading(false);
               return;
             }
@@ -190,6 +211,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           setUser(null);
+          setAuthMode("local");
           window.localStorage.removeItem(SESSION_KEY);
           setLoading(false);
           return;
@@ -199,6 +221,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           seededUsers.find((storedUser) => storedUser.id === sessionUserId) ??
             null,
         );
+        setAuthMode("local");
         setLoading(false);
       }
 
@@ -214,30 +237,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(
     async (email: string, password: string) => {
       const normalizedEmail = email.trim().toLowerCase();
+      const signInLocally = (matchingUser: CrmUser) => {
+        clearStoredSupabaseSession();
+        setUser(matchingUser);
+        setAuthMode("local");
+        window.localStorage.setItem(SESSION_KEY, matchingUser.id);
+      };
 
       if (hasSupabaseConfig) {
         try {
           const supabaseUser = await authService.signIn(normalizedEmail, password);
 
           setUser(supabaseUser);
+          setAuthMode("supabase");
           window.localStorage.setItem(SESSION_KEY, supabaseUser.id);
           return { ok: true, message: "Signed in with Supabase." };
         } catch (error) {
-          const message =
+          const supabaseMessage =
             error instanceof Error
               ? error.message
               : "Supabase login failed.";
 
-          return { ok: false, message };
+          const { latestUsers, matchingUser } = findLocalUser(normalizedEmail);
+
+          setUsers(latestUsers);
+
+          if (matchingUser) {
+            if (matchingUser.password !== password) {
+              return {
+                ok: false,
+                message: "Password does not match this user.",
+              };
+            }
+
+            signInLocally(matchingUser);
+            return { ok: true, message: "Signed in with local workspace account." };
+          }
+
+          return { ok: false, message: supabaseMessage };
         }
       }
 
-      const latestUsers = upsertDefaultUsers(readStoredUsers());
-      const matchingUser = latestUsers.find(
-        (candidate) => candidate.email.toLowerCase() === normalizedEmail,
-      );
+      const { latestUsers, matchingUser } = findLocalUser(normalizedEmail);
 
-      window.localStorage.setItem(USERS_KEY, JSON.stringify(latestUsers));
       setUsers(latestUsers);
 
       if (!matchingUser) {
@@ -254,8 +296,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
 
-      setUser(matchingUser);
-      window.localStorage.setItem(SESSION_KEY, matchingUser.id);
+      signInLocally(matchingUser);
 
       return { ok: true, message: "Signed in." };
     },
@@ -265,11 +306,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     authService.signOut();
     setUser(null);
+    setAuthMode("local");
     window.localStorage.removeItem(SESSION_KEY);
   }, []);
 
   const addUser = useCallback(
-    (input: NewUserInput) => {
+    async (input: NewUserInput) => {
       const normalizedEmail = input.email.trim().toLowerCase();
 
       if (users.some((candidate) => candidate.email.toLowerCase() === normalizedEmail)) {
@@ -278,6 +320,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (users.length >= 10) {
         return { ok: false, message: "This workspace is capped at 10 users." };
+      }
+
+      if (hasSupabaseConfig && authMode === "supabase") {
+        try {
+          const authUser = await authService.createUser(normalizedEmail, input.password)
+            .catch(() => ({ user: undefined }));
+          const createdUser = await authService.createCrmProfile({
+            authUserId: authUser.user?.id ?? null,
+            email: normalizedEmail,
+            name: input.name.trim(),
+            role: input.role,
+          });
+          const supabaseUsers = await authService.listCrmUsers();
+
+          setUsers(supabaseUsers);
+
+          return { ok: true, message: `${createdUser.name} was added.` };
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Could not add this Supabase user.";
+
+          return { ok: false, message };
+        }
       }
 
       const newUser: CrmUser = {
@@ -293,7 +360,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return { ok: true, message: `${newUser.name} was added.` };
     },
-    [persistUsers, users],
+    [authMode, hasSupabaseConfig, persistUsers, users],
   );
 
   const deleteUser = useCallback(
@@ -375,6 +442,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       addUser,
+      authMode,
       canManageUsers: user?.role === "admin",
       deleteUser,
       loading,
@@ -384,7 +452,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       users,
     }),
-    [addUser, deleteUser, loading, login, logout, updateUser, user, users],
+    [addUser, authMode, deleteUser, loading, login, logout, updateUser, user, users],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

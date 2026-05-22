@@ -13,6 +13,7 @@ import { followupsService } from "@/lib/services/followups";
 import { leadsService } from "@/lib/services/leads";
 import { notesService } from "@/lib/services/notes";
 import { getSupabaseEnv } from "@/lib/supabase/client";
+import { useAuth } from "./auth-provider";
 import type {
   ActiveProjectStatus,
   ActivityEntry,
@@ -45,6 +46,7 @@ type LeadContextValue = {
   getLead: (id: string) => Lead | undefined;
   leads: Lead[];
   loading: boolean;
+  refreshLeads: () => Promise<void>;
   supabaseError: string;
   supabaseMode: "connected" | "fallback" | "loading";
   supabaseWarning: string;
@@ -85,6 +87,25 @@ function slugify(value: string) {
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+function createUuid() {
+  if (typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (digit) =>
+    (
+      Number(digit) ^
+      (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (Number(digit) / 4)))
+    ).toString(16),
+  );
 }
 
 function stageFromStatus(status: LeadStatus): LeadStage {
@@ -339,7 +360,45 @@ function readStoredLeads() {
   }
 }
 
+async function importLeadToSupabase(lead: Lead) {
+  const leadToImport = isUuid(lead.id)
+    ? lead
+    : {
+        ...lead,
+        id: createUuid(),
+      };
+  const createdLead = await leadsService.createLead(leadToImport);
+  const importedLeadId = createdLead.id;
+
+  await Promise.allSettled([
+    ...leadToImport.activity.map((activity) =>
+      activitiesService.createActivity(importedLeadId, {
+        createdAt: activity.createdAt,
+        detail: activity.detail,
+        label: activity.label,
+        type: activity.type,
+      }),
+    ),
+    leadToImport.notes
+      ? notesService.createNote(importedLeadId, leadToImport.notes)
+      : null,
+    leadToImport.nextFollowUpDate
+      ? followupsService.createFollowup({
+          assigned_rep_id: null,
+          completed_at: null,
+          due_at: `${leadToImport.nextFollowUpDate}T12:00:00.000Z`,
+          lead_id: importedLeadId,
+          reason: leadToImport.nextStep,
+          status: "open",
+        })
+      : null,
+  ].filter(Boolean));
+
+  return createdLead;
+}
+
 export function LeadProvider({ children }: { children: React.ReactNode }) {
+  const { authMode } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [supabaseError, setSupabaseError] = useState("");
@@ -347,69 +406,129 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
     "connected" | "fallback" | "loading"
   >("loading");
   const supabaseEnv = getSupabaseEnv();
-  const shouldUseSupabase = supabaseEnv.isConfigured;
+  const shouldUseSupabase = supabaseEnv.isConfigured && authMode === "supabase";
   const supabaseWarning = shouldUseSupabase
     ? ""
-    : `Supabase env vars missing: ${supabaseEnv.missing.join(", ")}. Using local mock fallback.`;
+    : supabaseEnv.isConfigured
+      ? "Using local workspace data for this account."
+      : `Supabase env vars missing: ${supabaseEnv.missing.join(", ")}. Using local mock fallback.`;
+
+  const refreshLeads = useCallback(async () => {
+    const resetVersion = window.localStorage.getItem(LEADS_RESET_KEY);
+    const statusMigrationVersion = window.localStorage.getItem(
+      LEADS_STATUS_MIGRATION_KEY,
+    );
+    const shouldClearStarterLeads =
+      resetVersion !== CURRENT_LEADS_RESET_VERSION;
+    const shouldMoveAllLeadsToNew =
+      statusMigrationVersion !== CURRENT_STATUS_MIGRATION_VERSION;
+    const storedLeads = shouldClearStarterLeads
+      ? []
+      : migrateLeadsToNewLead(readStoredLeads(), shouldMoveAllLeadsToNew);
+
+    if (shouldClearStarterLeads) {
+      window.localStorage.setItem(LEADS_RESET_KEY, CURRENT_LEADS_RESET_VERSION);
+    }
+
+    if (shouldMoveAllLeadsToNew) {
+      window.localStorage.setItem(
+        LEADS_STATUS_MIGRATION_KEY,
+        CURRENT_STATUS_MIGRATION_VERSION,
+      );
+    }
+
+    if (!shouldUseSupabase) {
+      setLeads(storedLeads);
+      window.localStorage.setItem(LEADS_KEY, JSON.stringify(storedLeads));
+      setSupabaseError("");
+      setSupabaseMode("fallback");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const supabaseLeads = await leadsService.listLeads();
+      const missingStoredLeads = storedLeads.filter((storedLead) => {
+        return !supabaseLeads.some((supabaseLead) => {
+          const emailMatches =
+            storedLead.email &&
+            supabaseLead.email &&
+            storedLead.email.toLowerCase() === supabaseLead.email.toLowerCase();
+          const phoneMatches =
+            storedLead.phone &&
+            supabaseLead.phone &&
+            storedLead.phone === supabaseLead.phone;
+
+          return (
+            storedLead.id === supabaseLead.id ||
+            Boolean(emailMatches) ||
+            Boolean(phoneMatches)
+          );
+        });
+      });
+
+      if (missingStoredLeads.length > 0) {
+        const importedLeads: Lead[] = [];
+        const importErrors: string[] = [];
+
+        for (const storedLead of missingStoredLeads) {
+          try {
+            importedLeads.push(await importLeadToSupabase(storedLead));
+          } catch (error) {
+            importErrors.push(
+              `${storedLead.name}: ${messageFromError(
+                error,
+                "Could not import this lead.",
+              )}`,
+            );
+          }
+        }
+
+        setLeads([...importedLeads, ...supabaseLeads]);
+        setSupabaseError(
+          importErrors.length > 0
+            ? `Some local leads could not be recovered: ${importErrors.join(" ")}`
+            : "",
+        );
+        setSupabaseMode("connected");
+        return;
+      }
+
+      setLeads(supabaseLeads);
+      setSupabaseError("");
+      setSupabaseMode("connected");
+    } catch (error) {
+      setLeads([]);
+      setSupabaseError(
+        messageFromError(error, "Could not load Supabase leads."),
+      );
+      setSupabaseMode("connected");
+    } finally {
+      setLoading(false);
+    }
+  }, [shouldUseSupabase]);
 
   useEffect(() => {
     queueMicrotask(() => {
-      const resetVersion = window.localStorage.getItem(LEADS_RESET_KEY);
-      const statusMigrationVersion = window.localStorage.getItem(
-        LEADS_STATUS_MIGRATION_KEY,
-      );
-      const shouldClearStarterLeads =
-        resetVersion !== CURRENT_LEADS_RESET_VERSION;
-      const shouldMoveAllLeadsToNew =
-        statusMigrationVersion !== CURRENT_STATUS_MIGRATION_VERSION;
-      const storedLeads = shouldClearStarterLeads
-        ? []
-        : migrateLeadsToNewLead(readStoredLeads(), shouldMoveAllLeadsToNew);
-
-      if (shouldClearStarterLeads) {
-        window.localStorage.setItem(
-          LEADS_RESET_KEY,
-          CURRENT_LEADS_RESET_VERSION,
-        );
-      }
-
-      if (shouldMoveAllLeadsToNew) {
-        window.localStorage.setItem(
-          LEADS_STATUS_MIGRATION_KEY,
-          CURRENT_STATUS_MIGRATION_VERSION,
-        );
-      }
-
-      async function loadLeads() {
-        if (!shouldUseSupabase) {
-          setLeads(storedLeads);
-          window.localStorage.setItem(LEADS_KEY, JSON.stringify(storedLeads));
-          setSupabaseError("");
-          setSupabaseMode("fallback");
-          setLoading(false);
-          return;
-        }
-
-        try {
-          const supabaseLeads = await leadsService.listLeads();
-
-          setLeads(supabaseLeads);
-          setSupabaseError("");
-          setSupabaseMode("connected");
-        } catch (error) {
-          setLeads([]);
-          setSupabaseError(
-            messageFromError(error, "Could not load Supabase leads."),
-          );
-          setSupabaseMode("connected");
-        } finally {
-          setLoading(false);
-        }
-      }
-
-      void loadLeads();
+      void refreshLeads();
     });
-  }, [shouldUseSupabase]);
+
+    function refreshVisibleApp() {
+      if (document.visibilityState === "visible") {
+        void refreshLeads();
+      }
+    }
+
+    window.addEventListener("focus", refreshVisibleApp);
+    document.addEventListener("visibilitychange", refreshVisibleApp);
+    const intervalId = window.setInterval(refreshVisibleApp, 30000);
+
+    return () => {
+      window.removeEventListener("focus", refreshVisibleApp);
+      document.removeEventListener("visibilitychange", refreshVisibleApp);
+      window.clearInterval(intervalId);
+    };
+  }, [refreshLeads]);
 
   const persistLeads = useCallback(
     (nextLeads: Lead[]) => {
@@ -975,6 +1094,7 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
       getLead,
       leads,
       loading,
+      refreshLeads,
       supabaseError,
       supabaseMode,
       supabaseWarning,
@@ -993,6 +1113,7 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
       getLead,
       leads,
       loading,
+      refreshLeads,
       supabaseError,
       supabaseMode,
       supabaseWarning,

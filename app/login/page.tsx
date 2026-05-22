@@ -71,9 +71,8 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-5 text-sm leading-6 text-zinc-400">
-          Internal access for admins and sales reps. Supabase Auth is used when
-          environment keys are configured; local demo login is only available
-          without Supabase keys.
+          Internal access for admins and sales reps. Supabase Auth is used for
+          connected accounts; seeded workspace accounts can still sign in locally.
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
@@ -129,6 +128,10 @@ export default function LoginPage() {
           Initial admin: creative911media@gmail.com
           <br />
           Demo sales_rep: rep@adusales.local / rep123
+          <br />
+          Manny: manny@adusales.local / manny123
+          <br />
+          Jake: jake@adusales.local / jake123
         </div>
       </section>
     </main>

@@ -2,7 +2,10 @@ import { supabaseRestClient } from "@/lib/supabase/client";
 import type { DbUser } from "@/lib/supabase/database";
 
 export const usersService = {
-  async createUser(user: Pick<DbUser, "email" | "full_name" | "role">) {
+  async createUser(
+    user: Pick<DbUser, "email" | "full_name" | "role"> &
+      Partial<Pick<DbUser, "auth_user_id">>,
+  ) {
     const [createdUser] = await supabaseRestClient.insert<DbUser[]>(
       "users",
       user,
