@@ -111,7 +111,9 @@ export default function EditLeadPage() {
 function EditLeadForm({ lead }: { lead: Lead }) {
   const router = useRouter();
   const { user, users } = useAuth();
-  const { updateLead } = useLeads();
+  const { supabaseError, updateLead } = useLeads();
+  const [formError, setFormError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const [name, setName] = useState(lead.name);
   const [phone, setPhone] = useState(lead.phone);
   const [email, setEmail] = useState(lead.email);
@@ -138,46 +140,56 @@ function EditLeadForm({ lead }: { lead: Lead }) {
   );
   const [notes, setNotes] = useState(lead.notes);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setFormError("");
+    setIsSaving(true);
     const budget = formatBudget(value);
-    const updatedLead = updateLead(lead.id, {
-      name,
-      phone,
-      email,
-      address,
-      city,
-      budget,
-      projectType,
-      timeline,
-      value,
-      stage: stageFromStatus(status),
-      status,
-      priority,
-      assignedRep,
-      nextFollowUpDate,
-      source,
-      nextStep,
-      projectInfo:
-        projectInfo ||
-        buildProjectInfo({
-          address,
-          budget,
-          city,
-          projectType,
-          timeline,
-        }),
-      appointment: {
-        date: appointmentDate || nextFollowUpDate,
-        time: appointmentTime || "Not set",
-        type: appointmentType,
-        notes: appointmentNotes || "Appointment details not set.",
-      },
-      notes,
-    });
 
-    if (updatedLead) {
-      router.push(`/leads/${updatedLead.id}`);
+    try {
+      const updatedLead = await updateLead(lead.id, {
+        name,
+        phone,
+        email,
+        address,
+        city,
+        budget,
+        projectType,
+        timeline,
+        value,
+        stage: stageFromStatus(status),
+        status,
+        priority,
+        assignedRep,
+        nextFollowUpDate,
+        source,
+        nextStep,
+        projectInfo:
+          projectInfo ||
+          buildProjectInfo({
+            address,
+            budget,
+            city,
+            projectType,
+            timeline,
+          }),
+        appointment: {
+          date: appointmentDate || nextFollowUpDate,
+          time: appointmentTime || "Not set",
+          type: appointmentType,
+          notes: appointmentNotes || "Appointment details not set.",
+        },
+        notes,
+      });
+
+      if (updatedLead) {
+        router.push(`/leads/${updatedLead.id}`);
+      }
+    } catch (error) {
+      setFormError(
+        error instanceof Error ? error.message : "Could not update lead.",
+      );
+      setIsSaving(false);
     }
   }
 
@@ -193,6 +205,11 @@ function EditLeadForm({ lead }: { lead: Lead }) {
         className="grid gap-5 rounded-lg border border-white/10 bg-[#0b1018]/74 p-4 shadow-2xl shadow-black/25 backdrop-blur-xl md:p-6 xl:grid-cols-[1.1fr_0.9fr]"
         onSubmit={handleSubmit}
       >
+        {(formError || supabaseError) && (
+          <div className="rounded-lg border border-rose-300/30 bg-rose-400/10 p-4 text-sm leading-6 text-rose-100 xl:col-span-2">
+            {formError || supabaseError}
+          </div>
+        )}
         <section>
           <h2 className="text-lg font-semibold text-white">Contact details</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -358,8 +375,9 @@ function EditLeadForm({ lead }: { lead: Lead }) {
           <button
             className="mt-6 h-12 w-full rounded-lg bg-gradient-to-r from-sky-300 to-emerald-300 text-sm font-semibold text-slate-950 shadow-lg shadow-sky-950/30 transition hover:brightness-110"
             type="submit"
+            disabled={isSaving}
           >
-            Save changes
+            {isSaving ? "Saving..." : "Save changes"}
           </button>
         </section>
       </form>

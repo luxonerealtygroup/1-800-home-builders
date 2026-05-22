@@ -22,8 +22,9 @@ function formatBudget(value: number) {
 
 export default function EmailIntakePage() {
   const { canManageUsers } = useAuth();
-  const { addLead, leads } = useLeads();
+  const { addLead, leads, supabaseError } = useLeads();
   const [importedEmailIds, setImportedEmailIds] = useState<string[]>([]);
+  const [importError, setImportError] = useState("");
 
   const parsedEmails = useMemo(
     () =>
@@ -48,7 +49,7 @@ export default function EmailIntakePage() {
     [importedEmailIds, leads],
   );
 
-  function importEmail(emailId: string) {
+  async function importEmail(emailId: string) {
     const intakeRecord = parsedEmails.find(
       (record) => record.email.id === emailId,
     );
@@ -58,47 +59,55 @@ export default function EmailIntakePage() {
     }
 
     const { email, parsedLead } = intakeRecord;
-    addLead({
-      name: parsedLead.fullName,
-      phone: parsedLead.phone,
-      email: parsedLead.email,
-      address: parsedLead.propertyAddress,
-      city: parsedLead.city,
-      budget: formatBudget(100000),
-      projectType: parsedLead.projectType,
-      timeline: parsedLead.timeline,
-      value: 100000,
-      stage: "New",
-      status: "New Lead",
-      priority: "Warm",
-      assignedRep: "Unassigned",
-      nextFollowUpDate: todayIsoDate(),
-      source: parsedLead.leadSource,
-      nextStep: "Review imported email and call to qualify.",
-      notes: parsedLead.messageBody,
-      projectInfo: `${parsedLead.projectType}. Timeline: ${parsedLead.timeline}. Email budget parsed as ${formatBudget(parsedLead.budget)}; starting CRM estimate set to $100k.`,
-      appointment: {
-        date: todayIsoDate(),
-        time: "Not set",
-        type: "Phone consult",
-        notes: "Appointment not set. Imported from email intake.",
-      },
-      initialActivity: [
-        {
-          type: "email",
-          label: "Original lead email imported",
-          detail: `Subject: ${email.subject}\nThread: ${email.threadId}\n\n${email.body}`,
-        },
-        {
-          type: "note",
-          label: "AI summary placeholder",
-          detail:
-            "AI summary will be generated after OpenAI integration. For now, use parsed project type, budget, timeline, and message body.",
-        },
-      ],
-    });
+    setImportError("");
 
-    setImportedEmailIds((currentIds) => [...currentIds, emailId]);
+    try {
+      await addLead({
+        name: parsedLead.fullName,
+        phone: parsedLead.phone,
+        email: parsedLead.email,
+        address: parsedLead.propertyAddress,
+        city: parsedLead.city,
+        budget: formatBudget(100000),
+        projectType: parsedLead.projectType,
+        timeline: parsedLead.timeline,
+        value: 100000,
+        stage: "New",
+        status: "New Lead",
+        priority: "Warm",
+        assignedRep: "Unassigned",
+        nextFollowUpDate: todayIsoDate(),
+        source: parsedLead.leadSource,
+        nextStep: "Review imported email and call to qualify.",
+        notes: parsedLead.messageBody,
+        projectInfo: `${parsedLead.projectType}. Timeline: ${parsedLead.timeline}. Email budget parsed as ${formatBudget(parsedLead.budget)}; starting CRM estimate set to $100k.`,
+        appointment: {
+          date: todayIsoDate(),
+          time: "Not set",
+          type: "Phone consult",
+          notes: "Appointment not set. Imported from email intake.",
+        },
+        initialActivity: [
+          {
+            type: "email",
+            label: "Original lead email imported",
+            detail: `Subject: ${email.subject}\nThread: ${email.threadId}\n\n${email.body}`,
+          },
+          {
+            type: "note",
+            label: "AI summary placeholder",
+            detail:
+              "AI summary will be generated after OpenAI integration. For now, use parsed project type, budget, timeline, and message body.",
+          },
+        ],
+      });
+
+      setImportedEmailIds((currentIds) => [...currentIds, emailId]);
+    } catch (error) {
+      setImportError(
+        error instanceof Error ? error.message : "Could not import lead.",
+      );
+    }
   }
 
   return (
@@ -119,6 +128,11 @@ export default function EmailIntakePage() {
         </section>
       ) : (
         <div className="space-y-6">
+          {(importError || supabaseError) && (
+            <div className="rounded-lg border border-rose-300/30 bg-rose-400/10 p-4 text-sm leading-6 text-rose-100">
+              {importError || supabaseError}
+            </div>
+          )}
           <section className="grid gap-3 md:grid-cols-4">
             <StatusCard label="Inbox" value="Mock connected" tone="sky" />
             <StatusCard

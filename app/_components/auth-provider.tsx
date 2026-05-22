@@ -188,6 +188,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch {
             authService.signOut();
           }
+
+          setUser(null);
+          window.localStorage.removeItem(SESSION_KEY);
+          setLoading(false);
+          return;
         }
 
         setUser(
@@ -222,22 +227,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             error instanceof Error
               ? error.message
               : "Supabase login failed.";
-          const latestUsers = upsertDefaultUsers(readStoredUsers());
-          const fallbackUser = latestUsers.find(
-            (candidate) => candidate.email.toLowerCase() === normalizedEmail,
-          );
-
-          if (fallbackUser?.password === password) {
-            setUsers(latestUsers);
-            setUser(fallbackUser);
-            window.localStorage.setItem(USERS_KEY, JSON.stringify(latestUsers));
-            window.localStorage.setItem(SESSION_KEY, fallbackUser.id);
-
-            return {
-              ok: true,
-              message: `Supabase login failed, using mock fallback. ${message}`,
-            };
-          }
 
           return { ok: false, message };
         }

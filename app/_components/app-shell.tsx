@@ -190,7 +190,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <div className="mx-auto max-w-7xl px-4 py-5 md:px-8 md:py-8 lg:px-10">
-          {canManageUsers && (supabaseWarning || supabaseError) && (
+          {(supabaseWarning || supabaseError) && (
             <div className="mb-4 rounded-lg border border-amber-300/25 bg-amber-300/[0.08] p-3 text-sm leading-6 text-amber-100 shadow-2xl shadow-black/20">
               {supabaseWarning || "Supabase sync issue"}{" "}
               <span className="text-amber-100/70">

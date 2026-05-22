@@ -19,15 +19,23 @@ async function authRequest<T>(path: string, body?: unknown) {
     throw new Error("Supabase environment variables are missing.");
   }
 
-  const response = await fetch(`${env.url.replace(/\/$/, "")}/auth/v1/${path}`, {
-    body: body ? JSON.stringify(body) : undefined,
-    headers: {
-      apikey: env.anonKey,
-      Authorization: `Bearer ${env.anonKey}`,
-      "Content-Type": "application/json",
-    },
-    method: body ? "POST" : "GET",
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${env.url.replace(/\/$/, "")}/auth/v1/${path}`, {
+      body: body ? JSON.stringify(body) : undefined,
+      headers: {
+        apikey: env.anonKey,
+        Authorization: `Bearer ${env.anonKey}`,
+        "Content-Type": "application/json",
+      },
+      method: body ? "POST" : "GET",
+    });
+  } catch {
+    throw new Error(
+      `Could not reach Supabase Auth at ${env.url}. Check NEXT_PUBLIC_SUPABASE_URL in Vercel and .env.local, and confirm the Supabase project is active.`,
+    );
+  }
 
   if (!response.ok) {
     throw new Error(await response.text());

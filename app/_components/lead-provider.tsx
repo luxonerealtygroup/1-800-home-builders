@@ -33,14 +33,14 @@ type AddLeadInput = LeadInput & {
 type ActivityInput = Omit<ActivityEntry, "id" | "createdAt">;
 
 type LeadContextValue = {
-  addActivity: (leadId: string, activity: ActivityInput) => void;
-  addLead: (input: AddLeadInput) => Lead;
-  archiveLead: (leadId: string) => void;
+  addActivity: (leadId: string, activity: ActivityInput) => Promise<void>;
+  addLead: (input: AddLeadInput) => Promise<Lead>;
+  archiveLead: (leadId: string) => Promise<void>;
   applySuggestedUpdate: (
     leadId: string,
     suggestion: string,
     detail: string,
-  ) => void;
+  ) => Promise<void>;
   deleteLead: (leadId: string) => void;
   getLead: (id: string) => Lead | undefined;
   leads: Lead[];
@@ -48,19 +48,19 @@ type LeadContextValue = {
   supabaseError: string;
   supabaseMode: "connected" | "fallback" | "loading";
   supabaseWarning: string;
-  updateLead: (leadId: string, input: LeadInput) => Lead | undefined;
-  updateAssignedRep: (leadId: string, assignedRep: string) => void;
+  updateLead: (leadId: string, input: LeadInput) => Promise<Lead | undefined>;
+  updateAssignedRep: (leadId: string, assignedRep: string) => Promise<void>;
   updateActiveProjectStatus: (
     leadId: string,
     status: ActiveProjectStatus,
-  ) => void;
-  updateLeadStatus: (leadId: string, status: LeadStatus) => void;
+  ) => Promise<void>;
+  updateLeadStatus: (leadId: string, status: LeadStatus) => Promise<void>;
   updateFollowUp: (
     leadId: string,
     nextFollowUpDate: string,
     label: string,
     detail: string,
-  ) => void;
+  ) => Promise<void>;
 };
 
 const LEADS_KEY = "adu-crm-leads";
@@ -70,6 +70,10 @@ const CURRENT_LEADS_RESET_VERSION = "manual-entry-start-v1";
 const CURRENT_STATUS_MIGRATION_VERSION = "all-leads-new-lead-v1";
 
 const LeadContext = createContext<LeadContextValue | undefined>(undefined);
+
+function messageFromError(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
 
 function slugify(value: string) {
   return value
@@ -346,7 +350,7 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
   const shouldUseSupabase = supabaseEnv.isConfigured;
   const supabaseWarning = shouldUseSupabase
     ? ""
-    : "Supabase not connected";
+    : `Supabase env vars missing: ${supabaseEnv.missing.join(", ")}. Using local mock fallback.`;
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -380,6 +384,7 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
         if (!shouldUseSupabase) {
           setLeads(storedLeads);
           window.localStorage.setItem(LEADS_KEY, JSON.stringify(storedLeads));
+          setSupabaseError("");
           setSupabaseMode("fallback");
           setLoading(false);
           return;
@@ -389,19 +394,14 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
           const supabaseLeads = await leadsService.listLeads();
 
           setLeads(supabaseLeads);
-          window.localStorage.setItem(LEADS_KEY, JSON.stringify(supabaseLeads));
           setSupabaseError("");
           setSupabaseMode("connected");
         } catch (error) {
-          const message =
-            error instanceof Error
-              ? error.message
-              : "Could not load Supabase leads.";
-
-          setLeads(storedLeads);
-          window.localStorage.setItem(LEADS_KEY, JSON.stringify(storedLeads));
-          setSupabaseError(message);
-          setSupabaseMode("fallback");
+          setLeads([]);
+          setSupabaseError(
+            messageFromError(error, "Could not load Supabase leads."),
+          );
+          setSupabaseMode("connected");
         } finally {
           setLoading(false);
         }
@@ -411,13 +411,19 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
     });
   }, [shouldUseSupabase]);
 
-  const persistLeads = useCallback((nextLeads: Lead[]) => {
-    setLeads(nextLeads);
-    window.localStorage.setItem(LEADS_KEY, JSON.stringify(nextLeads));
-  }, []);
+  const persistLeads = useCallback(
+    (nextLeads: Lead[]) => {
+      setLeads(nextLeads);
+
+      if (!shouldUseSupabase) {
+        window.localStorage.setItem(LEADS_KEY, JSON.stringify(nextLeads));
+      }
+    },
+    [shouldUseSupabase],
+  );
 
   const addLead = useCallback(
-    (input: AddLeadInput) => {
+    async (input: AddLeadInput) => {
       const id =
         typeof crypto.randomUUID === "function"
           ? crypto.randomUUID()
@@ -456,40 +462,45 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
         isArchived: false,
       };
 
-      persistLeads([newLead, ...leads]);
       if (shouldUseSupabase) {
-        void leadsService
-          .createLead(newLead)
-          .then(() =>
-            Promise.all([
-              ...newLead.activity.map((activity) =>
-                activitiesService.createActivity(newLead.id, {
-                  createdAt: activity.createdAt,
-                  detail: activity.detail,
-                  label: activity.label,
-                  type: activity.type,
-                }),
-              ),
-              notesService.createNote(newLead.id, newLead.notes),
-              followupsService.createFollowup({
-                assigned_rep_id: null,
-                completed_at: null,
-                due_at: `${newLead.nextFollowUpDate}T12:00:00.000Z`,
-                lead_id: newLead.id,
-                reason: newLead.nextStep,
-                status: "open",
+        try {
+          const createdLead = await leadsService.createLead(newLead);
+
+          await Promise.all([
+            ...newLead.activity.map((activity) =>
+              activitiesService.createActivity(newLead.id, {
+                createdAt: activity.createdAt,
+                detail: activity.detail,
+                label: activity.label,
+                type: activity.type,
               }),
-            ]),
-          )
-          .catch((error: unknown) => {
-            setSupabaseError(
-              error instanceof Error
-                ? error.message
-                : "Could not create lead in Supabase.",
-            );
-            setSupabaseMode("fallback");
-          });
+            ),
+            notesService.createNote(newLead.id, newLead.notes),
+            followupsService.createFollowup({
+              assigned_rep_id: null,
+              completed_at: null,
+              due_at: `${newLead.nextFollowUpDate}T12:00:00.000Z`,
+              lead_id: newLead.id,
+              reason: newLead.nextStep,
+              status: "open",
+            }),
+          ]);
+          persistLeads([createdLead, ...leads]);
+          setSupabaseError("");
+
+          return createdLead;
+        } catch (error: unknown) {
+          const message = messageFromError(
+            error,
+            "Could not create lead in Supabase.",
+          );
+
+          setSupabaseError(message);
+          throw new Error(message);
+        }
       }
+
+      persistLeads([newLead, ...leads]);
 
       return newLead;
     },
@@ -497,7 +508,7 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addActivity = useCallback(
-    (leadId: string, activity: ActivityInput) => {
+    async (leadId: string, activity: ActivityInput) => {
       const entry: ActivityEntry = {
         ...activity,
         id: `${leadId}-${Date.now().toString(36)}`,
@@ -524,15 +535,14 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
           writes.push(notesService.createNote(leadId, entry.detail));
         }
 
-        void Promise.all(writes)
-          .catch((error: unknown) => {
-            setSupabaseError(
-              error instanceof Error
-                ? error.message
-                : "Could not save activity to Supabase.",
-            );
-            setSupabaseMode("fallback");
-          });
+        try {
+          await Promise.all(writes);
+          setSupabaseError("");
+        } catch (error: unknown) {
+          setSupabaseError(
+            messageFromError(error, "Could not save activity to Supabase."),
+          );
+        }
       }
     },
     [leads, persistLeads, shouldUseSupabase],
@@ -546,7 +556,7 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
   );
 
   const archiveLead = useCallback(
-    (leadId: string) => {
+    async (leadId: string) => {
       const entry: ActivityEntry = {
         id: `${leadId}-${Date.now().toString(36)}`,
         type: "note",
@@ -569,24 +579,22 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
         ),
       );
       if (shouldUseSupabase) {
-        void leadsService
-          .archiveLead(leadId)
-          .then(() => activitiesService.createActivity(leadId, entry))
-          .catch((error: unknown) => {
-            setSupabaseError(
-              error instanceof Error
-                ? error.message
-                : "Could not archive lead in Supabase.",
-            );
-            setSupabaseMode("fallback");
-          });
+        try {
+          await leadsService.archiveLead(leadId);
+          await activitiesService.createActivity(leadId, entry);
+          setSupabaseError("");
+        } catch (error: unknown) {
+          setSupabaseError(
+            messageFromError(error, "Could not archive lead in Supabase."),
+          );
+        }
       }
     },
     [leads, persistLeads, shouldUseSupabase],
   );
 
   const applySuggestedUpdate = useCallback(
-    (leadId: string, suggestion: string, detail: string) => {
+    async (leadId: string, suggestion: string, detail: string) => {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       const tomorrowDate = tomorrow.toISOString().slice(0, 10);
@@ -628,17 +636,15 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
             lastTouch: "Just now",
           } as Lead;
 
-          void leadsService
-            .updateLead(nextLead)
-            .then(() => activitiesService.createActivity(leadId, entry))
-            .catch((error: unknown) => {
-              setSupabaseError(
-                error instanceof Error
-                  ? error.message
-                  : "Could not save AI suggestion to Supabase.",
-              );
-              setSupabaseMode("fallback");
-            });
+          try {
+            await leadsService.updateLead(nextLead);
+            await activitiesService.createActivity(leadId, entry);
+            setSupabaseError("");
+          } catch (error: unknown) {
+            setSupabaseError(
+              messageFromError(error, "Could not save AI suggestion to Supabase."),
+            );
+          }
         }
       }
     },
@@ -646,8 +652,9 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
   );
 
   const updateLead = useCallback(
-    (leadId: string, input: LeadInput) => {
+    async (leadId: string, input: LeadInput) => {
       let updatedLead: Lead | undefined;
+      let updateEntry: ActivityEntry | undefined;
       const probabilityByStage = {
         New: 28,
         Qualified: 52,
@@ -668,6 +675,7 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
             detail: buildUpdateDetail(lead, input),
             createdAt: new Date().toISOString(),
           };
+          updateEntry = entry;
 
           updatedLead = {
             ...lead,
@@ -690,18 +698,26 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
       if (updatedLead && shouldUseSupabase) {
         const writes: Promise<unknown>[] = [leadsService.updateLead(updatedLead)];
 
+        if (updateEntry) {
+          writes.push(activitiesService.createActivity(updatedLead.id, updateEntry));
+        }
+
         if (updatedLead.notes) {
           writes.push(notesService.createNote(updatedLead.id, updatedLead.notes));
         }
 
-        void Promise.all(writes).catch((error: unknown) => {
-          setSupabaseError(
-            error instanceof Error
-              ? error.message
-              : "Could not update lead in Supabase.",
+        try {
+          await Promise.all(writes);
+          setSupabaseError("");
+        } catch (error: unknown) {
+          const message = messageFromError(
+            error,
+            "Could not update lead in Supabase.",
           );
-          setSupabaseMode("fallback");
-        });
+
+          setSupabaseError(message);
+          throw new Error(message);
+        }
       }
 
       return updatedLead;
@@ -710,7 +726,7 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
   );
 
   const updateLeadStatus = useCallback(
-    (leadId: string, status: LeadStatus) => {
+    async (leadId: string, status: LeadStatus) => {
       const entry: ActivityEntry = {
         id: `${leadId}-${Date.now().toString(36)}`,
         type: "note",
@@ -771,17 +787,15 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
             status,
           };
 
-          void leadsService
-            .updateLead(nextLead)
-            .then(() => activitiesService.createActivity(leadId, entry))
-            .catch((error: unknown) => {
-              setSupabaseError(
-                error instanceof Error
-                  ? error.message
-                  : "Could not update status in Supabase.",
-              );
-              setSupabaseMode("fallback");
-            });
+          try {
+            await leadsService.updateLead(nextLead);
+            await activitiesService.createActivity(leadId, entry);
+            setSupabaseError("");
+          } catch (error: unknown) {
+            setSupabaseError(
+              messageFromError(error, "Could not update status in Supabase."),
+            );
+          }
         }
       }
     },
@@ -789,7 +803,7 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
   );
 
   const updateFollowUp = useCallback(
-    (
+    async (
       leadId: string,
       nextFollowUpDate: string,
       label: string,
@@ -820,35 +834,31 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
         const currentLead = leads.find((lead) => lead.id === leadId);
 
         if (currentLead) {
-          void leadsService
-            .updateLead({
+          try {
+            await leadsService.updateLead({
               ...currentLead,
               activity: [entry, ...currentLead.activity],
               lastTouch: "Just now",
               nextFollowUpDate,
               nextStep: detail,
-            })
-            .then(() =>
-              Promise.all([
-                activitiesService.createActivity(leadId, entry),
-                followupsService.createFollowup({
-                  assigned_rep_id: null,
-                  completed_at: null,
-                  due_at: `${nextFollowUpDate}T12:00:00.000Z`,
-                  lead_id: leadId,
-                  reason: detail,
-                  status: "open",
-                }),
-              ]),
-            )
-            .catch((error: unknown) => {
-              setSupabaseError(
-                error instanceof Error
-                  ? error.message
-                  : "Could not update follow-up in Supabase.",
-              );
-              setSupabaseMode("fallback");
             });
+            await Promise.all([
+              activitiesService.createActivity(leadId, entry),
+              followupsService.createFollowup({
+                assigned_rep_id: null,
+                completed_at: null,
+                due_at: `${nextFollowUpDate}T12:00:00.000Z`,
+                lead_id: leadId,
+                reason: detail,
+                status: "open",
+              }),
+            ]);
+            setSupabaseError("");
+          } catch (error: unknown) {
+            setSupabaseError(
+              messageFromError(error, "Could not update follow-up in Supabase."),
+            );
+          }
         }
       }
     },
@@ -856,7 +866,7 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
   );
 
   const updateAssignedRep = useCallback(
-    (leadId: string, assignedRep: string) => {
+    async (leadId: string, assignedRep: string) => {
       const entry: ActivityEntry = {
         id: `${leadId}-${Date.now().toString(36)}`,
         type: "note",
@@ -881,22 +891,20 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
         const currentLead = leads.find((lead) => lead.id === leadId);
 
         if (currentLead) {
-          void leadsService
-            .updateLead({
+          try {
+            await leadsService.updateLead({
               ...currentLead,
               activity: [entry, ...currentLead.activity],
               assignedRep,
               lastTouch: "Just now",
-            })
-            .then(() => activitiesService.createActivity(leadId, entry))
-            .catch((error: unknown) => {
-              setSupabaseError(
-                error instanceof Error
-                  ? error.message
-                  : "Could not update assignment in Supabase.",
-              );
-              setSupabaseMode("fallback");
             });
+            await activitiesService.createActivity(leadId, entry);
+            setSupabaseError("");
+          } catch (error: unknown) {
+            setSupabaseError(
+              messageFromError(error, "Could not update assignment in Supabase."),
+            );
+          }
         }
       }
     },
@@ -904,7 +912,7 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
   );
 
   const updateActiveProjectStatus = useCallback(
-    (leadId: string, status: ActiveProjectStatus) => {
+    async (leadId: string, status: ActiveProjectStatus) => {
       const entry: ActivityEntry = {
         id: `${leadId}-${Date.now().toString(36)}`,
         type: "note",
@@ -929,22 +937,23 @@ export function LeadProvider({ children }: { children: React.ReactNode }) {
         const currentLead = leads.find((lead) => lead.id === leadId);
 
         if (currentLead) {
-          void leadsService
-            .updateLead({
+          try {
+            await leadsService.updateLead({
               ...currentLead,
               activeProjectStatus: status,
               activity: [entry, ...currentLead.activity],
               lastTouch: "Just now",
-            })
-            .then(() => activitiesService.createActivity(leadId, entry))
-            .catch((error: unknown) => {
-              setSupabaseError(
-                error instanceof Error
-                  ? error.message
-                  : "Could not update project status in Supabase.",
-              );
-              setSupabaseMode("fallback");
             });
+            await activitiesService.createActivity(leadId, entry);
+            setSupabaseError("");
+          } catch (error: unknown) {
+            setSupabaseError(
+              messageFromError(
+                error,
+                "Could not update project status in Supabase.",
+              ),
+            );
+          }
         }
       }
     },

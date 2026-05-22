@@ -71,8 +71,9 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-5 text-sm leading-6 text-zinc-400">
-          Internal access for admins and sales reps. Supabase-ready auth is
-          scaffolded, with mock login active until environment keys are added.
+          Internal access for admins and sales reps. Supabase Auth is used when
+          environment keys are configured; local demo login is only available
+          without Supabase keys.
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>

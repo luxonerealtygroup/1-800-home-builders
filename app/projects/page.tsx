@@ -4,7 +4,7 @@ import { AppShell } from "../_components/app-shell";
 import { useLeads } from "../_components/lead-provider";
 import { PageHeader } from "../_components/page-header";
 import { ProjectCard } from "../_components/project-card";
-import { activeProjectStatuses, projects } from "../_lib/crm-data";
+import { activeProjectStatuses } from "../_lib/crm-data";
 
 export default function ProjectsPage() {
   const { leads, updateActiveProjectStatus } = useLeads();
@@ -60,9 +60,12 @@ export default function ProjectsPage() {
             </article>
           );
         })}
-        {projects.map((project) => (
-          <ProjectCard key={project.id} project={project} />
-        ))}
+        {convertedProjects.length === 0 && (
+          <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.035] p-5 text-sm leading-6 text-zinc-400 md:col-span-2">
+            No Supabase leads have converted to active projects yet. Approve a
+            quote to show a project here.
+          </div>
+        )}
       </section>
 
       <section className="mt-8 rounded-lg border border-white/10 bg-[#0b1018]/74 p-5 shadow-2xl shadow-black/20 backdrop-blur-xl">

@@ -24,6 +24,40 @@ export class SupabaseRestError extends Error {
   }
 }
 
+function formatSupabaseError(body: string, status: number) {
+  try {
+    const parsed = JSON.parse(body) as {
+      code?: string;
+      details?: string;
+      hint?: string;
+      message?: string;
+    };
+    const message = parsed.message || body;
+    const hint = parsed.hint ? ` Hint: ${parsed.hint}` : "";
+    const details = parsed.details ? ` Details: ${parsed.details}` : "";
+
+    if (status === 401 || status === 403 || parsed.code === "42501") {
+      return `Supabase permission error (${status}). Check that the user is signed in and Row Level Security policies allow read/write access to the requested table. ${message}${details}${hint}`;
+    }
+
+    if (status === 404 || parsed.code === "42P01") {
+      return `Supabase table or endpoint not found (${status}). Confirm the required table exists in the public schema. ${message}${details}${hint}`;
+    }
+
+    return `Supabase request failed (${status}). ${message}${details}${hint}`;
+  } catch {
+    if (status === 401 || status === 403) {
+      return `Supabase permission error (${status}). Check authentication and Row Level Security policies. ${body}`;
+    }
+
+    if (status === 404) {
+      return `Supabase table or endpoint not found (${status}). Confirm the required table exists in the public schema. ${body}`;
+    }
+
+    return `Supabase request failed (${status}). ${body}`;
+  }
+}
+
 function buildUrl(table: string, query?: Record<string, QueryValue>) {
   const env = getSupabaseEnv();
   const url = new URL(`${env.url.replace(/\/$/, "")}/rest/v1/${table}`);
@@ -49,19 +83,33 @@ async function request<T>(
   const session = getStoredSupabaseSession();
   const bearerToken = session?.access_token ?? env.anonKey;
 
-  const response = await fetch(buildUrl(table, query), {
-    ...init,
-    headers: {
-      apikey: env.anonKey,
-      Authorization: `Bearer ${bearerToken}`,
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-      ...(init.headers ?? {}),
-    },
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(buildUrl(table, query), {
+      ...init,
+      headers: {
+        apikey: env.anonKey,
+        Authorization: `Bearer ${bearerToken}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+        ...(init.headers ?? {}),
+      },
+    });
+  } catch {
+    throw new SupabaseRestError(
+      `Could not reach Supabase at ${env.url}. Check NEXT_PUBLIC_SUPABASE_URL in Vercel and .env.local, and confirm the Supabase project is active.`,
+      0,
+    );
+  }
 
   if (!response.ok) {
-    throw new SupabaseRestError(await response.text(), response.status);
+    const body = await response.text();
+
+    throw new SupabaseRestError(
+      formatSupabaseError(body, response.status),
+      response.status,
+    );
   }
 
   if (response.status === 204) {

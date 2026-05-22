@@ -155,3 +155,65 @@ create index communications_lead_id_idx on public.communications(lead_id);
 create index ai_summaries_lead_id_idx on public.ai_summaries(lead_id);
 create index followups_due_at_idx on public.followups(due_at);
 create index followups_assigned_rep_id_idx on public.followups(assigned_rep_id);
+
+alter table public.users enable row level security;
+alter table public.leads enable row level security;
+alter table public.activities enable row level security;
+alter table public.notes enable row level security;
+alter table public.appointments enable row level security;
+alter table public.communications enable row level security;
+alter table public.ai_summaries enable row level security;
+alter table public.followups enable row level security;
+
+create policy "authenticated users can read crm users"
+  on public.users for select
+  to authenticated
+  using (true);
+
+create policy "authenticated users can write crm users"
+  on public.users for all
+  to authenticated
+  using (true)
+  with check (true);
+
+create policy "authenticated users can read and write leads"
+  on public.leads for all
+  to authenticated
+  using (true)
+  with check (true);
+
+create policy "authenticated users can read and write activities"
+  on public.activities for all
+  to authenticated
+  using (true)
+  with check (true);
+
+create policy "authenticated users can read and write notes"
+  on public.notes for all
+  to authenticated
+  using (true)
+  with check (true);
+
+create policy "authenticated users can read and write appointments"
+  on public.appointments for all
+  to authenticated
+  using (true)
+  with check (true);
+
+create policy "authenticated users can read and write communications"
+  on public.communications for all
+  to authenticated
+  using (true)
+  with check (true);
+
+create policy "authenticated users can read and write ai summaries"
+  on public.ai_summaries for all
+  to authenticated
+  using (true)
+  with check (true);
+
+create policy "authenticated users can read and write followups"
+  on public.followups for all
+  to authenticated
+  using (true)
+  with check (true);

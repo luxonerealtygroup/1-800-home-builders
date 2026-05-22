@@ -9,7 +9,7 @@ import { LeadCard } from "./_components/lead-card";
 import { MetricCard } from "./_components/metric-card";
 import { PageHeader } from "./_components/page-header";
 import { getVisibleLeads } from "./_lib/access";
-import { projects, type ActivityEntry, type Lead } from "./_lib/crm-data";
+import type { ActivityEntry, Lead } from "./_lib/crm-data";
 
 type DateFilter = "today" | "week" | "month" | "all";
 
@@ -230,16 +230,13 @@ export default function Home() {
     },
     {
       label: "Active projects",
-      value: String(activeProjectLeads.length + projects.length),
-      detail: "Converted plus mock projects",
+      value: String(activeProjectLeads.length),
+      detail: "Converted Supabase leads",
       tone: "violet" as const,
     },
     {
       label: "Completed projects",
-      value: String(
-        completedProjectLeads.length +
-          projects.filter((project) => project.progress === 100).length,
-      ),
+      value: String(completedProjectLeads.length),
       detail: "Finished work",
       tone: "emerald" as const,
     },
