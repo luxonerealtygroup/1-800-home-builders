@@ -1,0 +1,221 @@
+@import "tailwindcss";
+
+:root {
+  --background: #07090d;
+  --foreground: #f4f4f5;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: #38bdf8;
+  color: #020617;
+}
+
+.login-orbit,
+.login-cube {
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.login-orbit {
+  border: 1px solid rgba(125, 211, 252, 0.38);
+  border-radius: 18px;
+  background:
+    linear-gradient(rgba(125, 211, 252, 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125, 211, 252, 0.14) 1px, transparent 1px),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.2), rgba(14, 165, 233, 0.06));
+  background-size:
+    22px 22px,
+    22px 22px,
+    auto;
+  box-shadow:
+    inset 0 0 34px rgba(14, 165, 233, 0.1),
+    0 0 46px rgba(14, 165, 233, 0.18);
+  clip-path: polygon(0 0, 86% 0, 100% 14%, 100% 100%, 14% 100%, 0 86%);
+}
+
+.login-orbit::before,
+.login-orbit::after {
+  content: "";
+  position: absolute;
+  background: rgba(186, 230, 253, 0.88);
+  box-shadow:
+    0 0 18px rgba(125, 211, 252, 0.9),
+    0 0 44px rgba(14, 165, 233, 0.35);
+}
+
+.login-orbit::before {
+  height: 2px;
+  left: 13%;
+  top: 19%;
+  width: 48%;
+}
+
+.login-orbit::after {
+  bottom: 18%;
+  height: 38%;
+  right: 16%;
+  width: 2px;
+}
+
+.login-orbit-one {
+  animation: techPanelDrift 14s ease-in-out infinite;
+  height: 172px;
+  left: 7%;
+  top: 12%;
+  width: 238px;
+}
+
+.login-orbit-two {
+  animation: techPanelReverse 18s ease-in-out infinite;
+  bottom: 9%;
+  height: 210px;
+  right: 6%;
+  width: 310px;
+}
+
+.login-orbit-three {
+  animation: techRingPulse 12s ease-in-out infinite;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle, transparent 42%, rgba(14, 165, 233, 0.18) 43%, transparent 47%),
+    conic-gradient(
+      from 90deg,
+      transparent,
+      rgba(125, 211, 252, 0.72),
+      transparent 34%,
+      rgba(255, 255, 255, 0.22),
+      transparent 62%
+    );
+  clip-path: none;
+  height: 138px;
+  right: 26%;
+  top: 16%;
+  width: 138px;
+}
+
+.login-cube {
+  animation: prismDrift 10s ease-in-out infinite;
+  border: 1px solid rgba(125, 211, 252, 0.34);
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.24), transparent 34%),
+    linear-gradient(225deg, rgba(14, 165, 233, 0.28), rgba(15, 23, 42, 0.08));
+  box-shadow:
+    0 20px 80px rgba(0, 0, 0, 0.36),
+    0 0 34px rgba(14, 165, 233, 0.22);
+  clip-path: polygon(18% 0, 100% 0, 100% 74%, 82% 100%, 0 100%, 0 26%);
+}
+
+.login-cube span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border: 1px solid rgba(125, 211, 252, 0.32);
+  background:
+    linear-gradient(90deg, transparent 48%, rgba(186, 230, 253, 0.65) 49%, transparent 51%),
+    linear-gradient(transparent 48%, rgba(186, 230, 253, 0.65) 49%, transparent 51%);
+  transform: translate3d(12px, -12px, 30px);
+}
+
+.login-cube-one {
+  bottom: 19%;
+  height: 74px;
+  left: 16%;
+  width: 74px;
+}
+
+.login-cube-two {
+  animation-delay: -4s;
+  height: 54px;
+  right: 18%;
+  top: 58%;
+  width: 54px;
+}
+
+@keyframes techPanelDrift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotateX(58deg) rotateY(-16deg)
+      rotateZ(-8deg);
+  }
+  50% {
+    transform: translate3d(18px, -24px, 0) rotateX(58deg) rotateY(18deg)
+      rotateZ(4deg);
+  }
+}
+
+@keyframes techPanelReverse {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotateX(64deg) rotateY(18deg)
+      rotateZ(10deg);
+  }
+  50% {
+    transform: translate3d(-20px, 18px, 0) rotateX(64deg) rotateY(-18deg)
+      rotateZ(-6deg);
+  }
+}
+
+@keyframes techRingPulse {
+  0%,
+  100% {
+    opacity: 0.62;
+    transform: translate3d(0, 0, 0) rotateX(72deg) rotateY(-24deg)
+      rotateZ(0deg) scale(1);
+  }
+  50% {
+    opacity: 0.96;
+    transform: translate3d(10px, 22px, 0) rotateX(54deg) rotateY(28deg)
+      rotateZ(180deg) scale(1.08);
+  }
+}
+
+@keyframes prismDrift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotateX(58deg) rotateY(0deg)
+      rotateZ(38deg);
+  }
+  50% {
+    transform: translate3d(18px, -26px, 0) rotateX(58deg) rotateY(180deg)
+      rotateZ(38deg);
+  }
+}
+
+@media (max-width: 767px) {
+  .login-orbit-one {
+    left: -72px;
+    top: 8%;
+  }
+
+  .login-orbit-two {
+    bottom: -78px;
+    right: -92px;
+  }
+
+  .login-orbit-three,
+  .login-cube-two {
+    display: none;
+  }
+}
