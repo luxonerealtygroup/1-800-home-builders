@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -55,9 +56,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#07090d] px-6">
         <div className="w-full max-w-sm rounded-lg border border-white/10 bg-white/[0.04] p-6 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-sky-300 text-sm font-black text-slate-950">
-            ADU
-          </div>
+          <Image
+            className="mx-auto h-16 w-32 object-contain"
+            src="/official%20adu%20logo.png"
+            alt="ADU Home Builders"
+            width={128}
+            height={64}
+            priority
+          />
           <p className="mt-4 text-sm font-medium text-zinc-300">
             Opening secure workspace...
           </p>
@@ -80,9 +86,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_78%_12%,rgba(14,165,233,0.16),transparent_28%),radial-gradient(circle_at_18%_78%,rgba(16,185,129,0.1),transparent_26%),linear-gradient(180deg,rgba(7,9,13,0.48),rgba(7,9,13,0.98))]" />
 
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-72 border-r border-white/10 bg-[#090d14]/90 px-5 py-6 shadow-2xl shadow-black/40 backdrop-blur-2xl lg:block">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-gradient-to-br from-sky-300 to-emerald-300 text-sm font-black text-slate-950 shadow-lg shadow-sky-950/40">
-            ADU
+        <Link href="/" className="flex min-h-24 items-center gap-2">
+          <div className="relative h-24 w-28 shrink-0 overflow-hidden">
+            <Image
+              className="scale-[1.85] object-contain"
+              src="/official%20adu%20logo.png"
+              alt="ADU Home Builders"
+              fill
+              sizes="112px"
+              priority
+            />
           </div>
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.22em] text-sky-300">
@@ -139,11 +152,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main className="relative z-10 min-h-screen pb-24 lg:ml-72 lg:pb-0">
         <header className="sticky top-0 z-10 border-b border-white/10 bg-[#07090d]/72 px-4 py-3 backdrop-blur-2xl md:px-8 lg:px-10">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-300 lg:hidden">
-                BuildFlow
-              </p>
-              <h1 className="truncate text-lg font-semibold text-white md:text-2xl">
+            <div className="flex min-w-0 items-center gap-0 md:gap-3">
+              <Image
+                className="h-16 w-32 shrink-0 object-contain lg:hidden"
+                src="/official-adu-logo-header.png"
+                alt="ADU Home Builders"
+                width={130}
+                height={80}
+                priority
+              />
+              <h1 className="truncate text-sm font-semibold text-white sm:text-base md:text-2xl">
                 ADU Sales Command Center
               </h1>
             </div>

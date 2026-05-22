@@ -1,9 +1,9 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../_components/auth-provider";
-import { ShieldIcon } from "../_components/icons";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -53,10 +53,15 @@ export default function LoginPage() {
       </div>
 
       <section className="relative z-10 w-full max-w-md rounded-lg border border-white/15 bg-[#07090d]/70 p-5 shadow-2xl shadow-black/60 backdrop-blur-xl md:p-7">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-sky-300 text-slate-950">
-            <ShieldIcon className="h-6 w-6" />
-          </div>
+        <div className="flex flex-col items-center text-center">
+          <Image
+            className="h-40 w-80 max-w-full object-contain"
+            src="/official%20adu%20logo.png"
+            alt="ADU Home Builders"
+            width={320}
+            height={160}
+            priority
+          />
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-300">
               Private CRM
