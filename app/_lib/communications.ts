@@ -59,12 +59,34 @@ export const messageTemplates: MessageTemplate[] = [
     channel: "email",
     body: "Hi {{name}}, I wanted to close the loop on your ADU project. If the timing has changed, I can keep your file warm and reconnect when it makes sense.",
   },
+  {
+    id: "site-walk-confirmation",
+    label: "Site walk confirmation",
+    channel: "text",
+    body: "Hi {{name}}, confirming our site walk at {{address}} for your {{projectType}}. See you then!",
+  },
+  {
+    id: "proposal-ready",
+    label: "Proposal ready",
+    channel: "email",
+    body: "Hi {{name}}, your proposal for the {{projectType}} project at {{address}} (estimated {{budget}}) is ready. Let me know a good time to walk through it together.",
+  },
+  {
+    id: "contract-signed-thanks",
+    label: "Contract signed - thank you",
+    channel: "email",
+    body: "Hi {{name}}, thank you for choosing us for your {{projectType}} project! {{rep}} will be in touch shortly with next steps to get started.",
+  },
 ];
 
 export function personalizeTemplate(template: string, lead: Lead) {
   return template
     .replaceAll("{{name}}", lead.name.split(" ")[0] || lead.name)
-    .replaceAll("{{rep}}", lead.assignedRep || "your ADU specialist");
+    .replaceAll("{{rep}}", lead.assignedRep || "your ADU specialist")
+    .replaceAll("{{address}}", lead.address || "your property")
+    .replaceAll("{{city}}", lead.city || "")
+    .replaceAll("{{budget}}", lead.budget || "your estimated budget")
+    .replaceAll("{{projectType}}", lead.projectType || "ADU");
 }
 
 export function activityToCommunication(

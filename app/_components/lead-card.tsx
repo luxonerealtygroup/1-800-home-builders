@@ -1,5 +1,12 @@
+"use client";
+
 import Link from "next/link";
-import type { Lead } from "../_lib/crm-data";
+import { useLeads } from "./lead-provider";
+import {
+  lostLeadStatuses,
+  salesPipelineStatuses,
+  type Lead,
+} from "../_lib/crm-data";
 
 const priorityStyles = {
   Hot: "border-rose-300/40 bg-rose-400/12 text-rose-100",
@@ -7,7 +14,19 @@ const priorityStyles = {
   Nurture: "border-zinc-500/40 bg-zinc-500/12 text-zinc-300",
 };
 
-export function LeadCard({ lead, compact = false }: { lead: Lead; compact?: boolean }) {
+const quickStatusOptions = [...salesPipelineStatuses, ...lostLeadStatuses];
+
+export function LeadCard({
+  lead,
+  compact = false,
+  quickActions = false,
+}: {
+  lead: Lead;
+  compact?: boolean;
+  quickActions?: boolean;
+}) {
+  const { updateLeadStatus } = useLeads();
+
   return (
     <Link
       href={`/leads/${lead.id}`}
@@ -46,6 +65,27 @@ export function LeadCard({ lead, compact = false }: { lead: Lead; compact?: bool
           </p>
         </div>
       </div>
+
+      {quickActions && (
+        <div
+          className="mt-3"
+          onClick={(event) => event.preventDefault()}
+        >
+          <select
+            className="h-10 w-full rounded-lg border border-white/10 bg-black/35 px-2 text-xs font-semibold text-zinc-200 outline-none transition focus:border-sky-300/70"
+            value={lead.status}
+            onChange={(event) =>
+              updateLeadStatus(lead.id, event.target.value as Lead["status"])
+            }
+          >
+            {quickStatusOptions.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {!compact && (
         <>

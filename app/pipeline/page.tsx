@@ -66,7 +66,7 @@ export default function PipelinePage() {
                   </div>
                 ) : (
                   stageLeads.map((lead) => (
-                    <LeadCard key={lead.id} lead={lead} compact />
+                    <LeadCard key={lead.id} lead={lead} compact quickActions />
                   ))
                 )}
               </div>

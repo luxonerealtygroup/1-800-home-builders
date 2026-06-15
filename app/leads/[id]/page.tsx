@@ -10,6 +10,7 @@ import { useLeads } from "../../_components/lead-provider";
 import { LeadIcon, MailIcon, PhoneIcon } from "../../_components/icons";
 import { PageHeader } from "../../_components/page-header";
 import { canViewLead } from "../../_lib/access";
+import { leadsService } from "../../../lib/services/leads";
 import { messageTemplates, personalizeTemplate } from "../../_lib/communications";
 import {
   lostLeadStatuses,
@@ -53,6 +54,7 @@ export default function LeadDetailPage() {
     archiveLead,
     getLead,
     loading,
+    supabaseMode,
     updateLead,
     updateAssignedRep,
     updateFollowUp,
@@ -255,7 +257,7 @@ export default function LeadDetailPage() {
     setNoteDraft("");
   }
 
-  function saveAppointment() {
+  async function saveAppointment() {
     const selectedDate =
       appointmentDate || currentLead.appointment.date || currentLead.nextFollowUpDate;
     const selectedTime = appointmentTime || currentLead.appointment.time;
@@ -264,7 +266,7 @@ export default function LeadDetailPage() {
         ? "Site walk"
         : "Phone consult";
 
-    updateLead(currentLead.id, {
+    const updatedLead = await updateLead(currentLead.id, {
       ...currentLead,
       appointment: {
         date: selectedDate,
@@ -278,6 +280,10 @@ export default function LeadDetailPage() {
       }.`,
       value: currentLead.value,
     });
+
+    if (updatedLead && supabaseMode === "connected") {
+      await leadsService.upsertAppointment(updatedLead);
+    }
   }
 
   return (

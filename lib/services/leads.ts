@@ -5,8 +5,40 @@ import type {
   LeadStatus,
 } from "@/app/_lib/crm-data";
 import { supabaseRestClient } from "@/lib/supabase/client";
-import type { DbLead, DbLeadStatus } from "@/lib/supabase/database";
+import type { DbAppointment, DbLead, DbLeadStatus } from "@/lib/supabase/database";
 import { activitiesService } from "./activities";
+import { appointmentsService } from "./appointments";
+
+const appointmentTypeByDb = {
+  phone_consult: "Phone consult",
+  site_walk: "Site walk",
+  design_review: "Design review",
+  proposal_review: "Proposal review",
+} satisfies Record<string, Lead["appointment"]["type"]>;
+
+const dbAppointmentTypeByType = {
+  "Phone consult": "phone_consult",
+  "Site walk": "site_walk",
+  "Design review": "design_review",
+  "Proposal review": "proposal_review",
+} as const;
+
+function appointmentFromDb(dbAppointment: DbAppointment): Lead["appointment"] {
+  const appointmentDate = new Date(dbAppointment.appointment_at);
+
+  return {
+    date: dbAppointment.appointment_at.slice(0, 10),
+    notes: dbAppointment.notes ?? "",
+    time: new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(appointmentDate),
+    type:
+      appointmentTypeByDb[
+        dbAppointment.appointment_type as keyof typeof appointmentTypeByDb
+      ] ?? "Phone consult",
+  };
+}
 
 const dbStatusByLeadStatus: Record<LeadStatus, DbLeadStatus> = {
   Cold: "lost_not_interested",
@@ -142,7 +174,11 @@ export function toDbLead(lead: Lead) {
   };
 }
 
-export function fromDbLead(dbLead: DbLead, activity: ActivityEntry[] = []): Lead {
+export function fromDbLead(
+  dbLead: DbLead,
+  activity: ActivityEntry[] = [],
+  appointment?: DbAppointment,
+): Lead {
   const status = leadStatusByDbStatus[dbLead.status] ?? "New Lead";
   const value = Number(dbLead.estimated_value ?? 0);
 
@@ -154,12 +190,14 @@ export function fromDbLead(dbLead: DbLead, activity: ActivityEntry[] = []): Lead
     address: dbLead.property_address ?? "",
     archivedAt: dbLead.archived_at ?? undefined,
     assignedRep: dbLead.assigned_rep_name ?? "Unassigned",
-    appointment: {
-      date: dbLead.next_followup_at?.slice(0, 10) ?? "",
-      notes: "Appointment details will load from Supabase appointments next.",
-      time: "Not set",
-      type: "Phone consult",
-    },
+    appointment: appointment
+      ? appointmentFromDb(appointment)
+      : {
+          date: dbLead.next_followup_at?.slice(0, 10) ?? "",
+          notes: "No appointment scheduled yet.",
+          time: "Not set",
+          type: "Phone consult",
+        },
     budget: formatBudget(value),
     city: dbLead.city ?? "",
     email: dbLead.email ?? "",
@@ -215,7 +253,10 @@ export const leadsService = {
       order: "created_at.desc",
       select: "*",
     });
-    const activities = await activitiesService.listActivities();
+    const [activities, appointments] = await Promise.all([
+      activitiesService.listActivities(),
+      appointmentsService.listAppointments(),
+    ]);
 
     return dbLeads.map((dbLead) =>
       fromDbLead(
@@ -223,8 +264,34 @@ export const leadsService = {
         activities.filter((activity) => activity.lead_id === dbLead.id).map(
           activitiesService.fromDbActivity,
         ),
+        appointments.find((appointment) => appointment.lead_id === dbLead.id),
       ),
     );
+  },
+  async upsertAppointment(
+    lead: Lead,
+    options: { status?: string } = {},
+  ) {
+    if (!lead.appointment.date) {
+      return null;
+    }
+
+    const time = lead.appointment.time && lead.appointment.time !== "Not set"
+      ? lead.appointment.time
+      : "12:00 PM";
+    const appointmentAt = new Date(`${lead.appointment.date} ${time}`);
+    const appointmentAtIso = Number.isNaN(appointmentAt.getTime())
+      ? `${lead.appointment.date}T12:00:00.000Z`
+      : appointmentAt.toISOString();
+
+    return appointmentsService.createAppointment({
+      appointment_at: appointmentAtIso,
+      appointment_type: dbAppointmentTypeByType[lead.appointment.type] ?? "phone_consult",
+      assigned_rep_id: null,
+      lead_id: lead.id,
+      notes: lead.appointment.notes || null,
+      status: options.status ?? "scheduled",
+    });
   },
   async updateLead(lead: Lead) {
     const [updatedLead] = await supabaseRestClient.update<DbLead[]>(

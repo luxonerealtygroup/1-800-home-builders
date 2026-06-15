@@ -6,10 +6,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "./auth-provider";
 import { useLeads } from "./lead-provider";
+import { getVisibleLeads } from "../_lib/access";
 import {
   CalendarIcon,
   CommunicationIcon,
   DashboardIcon,
+  LeadIcon,
   LogoutIcon,
   PipelineIcon,
   ProjectsIcon,
@@ -19,11 +21,16 @@ import {
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: DashboardIcon },
+  { href: "/leads", label: "Leads", icon: LeadIcon },
   { href: "/follow-ups", label: "Follow-ups", icon: CalendarIcon },
   { href: "/pipeline", label: "Pipeline", icon: PipelineIcon },
   { href: "/projects", label: "Projects", icon: ProjectsIcon },
   { href: "/communications", label: "Comms", icon: CommunicationIcon },
 ];
+
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function isActive(pathname: string, href: string) {
   if (href === "/") {
@@ -37,7 +44,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { canManageUsers, loading, logout, user } = useAuth();
-  const { supabaseError, supabaseMode, supabaseWarning } = useLeads();
+  const { leads, supabaseError, supabaseMode, supabaseWarning } = useLeads();
+
+  const visibleLeads = getVisibleLeads(user, leads);
+  const today = todayIsoDate();
+  const overdueCount = visibleLeads.filter(
+    (lead) => lead.nextFollowUpDate && lead.nextFollowUpDate < today,
+  ).length;
 
   const visibleNavItems = canManageUsers
     ? [
@@ -122,6 +135,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <Icon className="h-5 w-5" />
                 {item.label}
+                {item.href === "/follow-ups" && overdueCount > 0 && (
+                  <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-400 px-1.5 text-[11px] font-semibold text-slate-950">
+                    {overdueCount}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -218,7 +236,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex h-14 flex-col items-center justify-center gap-1 rounded-lg text-[9px] font-semibold transition sm:text-[11px] ${
+                className={`relative flex h-14 flex-col items-center justify-center gap-1 rounded-lg text-[9px] font-semibold transition sm:text-[11px] ${
                   active
                     ? "bg-white text-slate-950 shadow-lg shadow-white/10"
                     : "text-zinc-500 hover:text-white"
@@ -226,6 +244,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <Icon className="h-5 w-5" />
                 {item.label}
+                {item.href === "/follow-ups" && overdueCount > 0 && (
+                  <span className="absolute right-2 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-400 px-1 text-[9px] font-semibold text-slate-950">
+                    {overdueCount}
+                  </span>
+                )}
               </Link>
             );
           })}
